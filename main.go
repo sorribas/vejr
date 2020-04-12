@@ -1,11 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -13,16 +14,18 @@ import (
 )
 
 func main() {
-	city, country, err := getLocation()
+	loc, err := getLocation()
 	if err != nil {
-		fmt.Println("Couldn't determine your location. Please provide the city where you are on the command line.")
+		fmt.Println("Couldn't determine your location. Please provide the city where you are on the command line.", err)
 		return
 	}
 
-	url, _ := searchYr(city, country)
-	weather, _ := getWeatherPage(url)
-	// weather, _ := getWeatherPage("https://www.yr.no/place/Denmark/Capital/Copenhagen/")
-	fmt.Println(url)
+	weather, err := getWeatherReport(loc.City, loc.CountryCode)
+	if err != nil {
+		fmt.Println("Error getting weather report:", err)
+		fmt.Println("Try updating vejr")
+		return
+	}
 
 	for _, day := range weather {
 		fmt.Println(day.Title)
@@ -40,12 +43,7 @@ func main() {
 	getLocation()
 }
 
-func getWeatherPage(url string) ([]WeatherDay, error) {
-	doc, err := getDocument(url)
-	if err != nil {
-		return nil, err
-	}
-
+func weatherReportFromDocument(doc *goquery.Document) []WeatherDay {
 	result := []WeatherDay{}
 	doc.Find(".yr-table-overview2").Each(func(i int, table *goquery.Selection) {
 		day := WeatherDay{}
@@ -65,7 +63,56 @@ func getWeatherPage(url string) ([]WeatherDay, error) {
 		result = append(result, day)
 	})
 
-	return result, nil
+	return result
+}
+
+func getDocument(url string) (*goquery.Document, error) {
+	res, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	fmt.Println("status", url, res.StatusCode)
+	if res.StatusCode != 200 {
+		return nil, errors.New("failed to fetch")
+	}
+
+	return goquery.NewDocumentFromReader(res.Body)
+}
+
+func getWeatherReport(city, country string) ([]WeatherDay, error) {
+	doc, err := getDocument("https://www.yr.no/soek/soek.aspx?spr=eng&&sted=" + city + "&land=" + country)
+	if err != nil {
+		return nil, err
+	}
+
+	href, exists := doc.Find("table.yr-table td a").Attr("href")
+	if !exists {
+		// assume that we got redirected to the weather page of the city
+		return weatherReportFromDocument(doc), nil
+	}
+
+	// otherwise follow the first link on the search results page
+	doc, err = getDocument("https://www.yr.no" + href)
+	if err != nil {
+		return nil, err
+	}
+	return weatherReportFromDocument(doc), nil
+}
+
+func getLocation() (Location, error) {
+	res, err := http.Get("http://ip-api.com/json/")
+	if err != nil {
+		return Location{}, err
+	}
+	bytes, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return Location{}, err
+	}
+
+	var loc Location
+	json.Unmarshal(bytes, &loc)
+	return loc, nil
 }
 
 type WeatherDay struct {
@@ -81,50 +128,7 @@ type WeatherPeriod struct {
 	Wind          string
 }
 
-func getDocument(url string) (*goquery.Document, error) {
-	res, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		return nil, errors.New("failed to fetch")
-	}
-
-	return goquery.NewDocumentFromReader(res.Body)
-}
-
-func getLocation() (string, string, error) {
-	res, err := http.Get("https://www.iplocation.net/")
-	if err != nil {
-		return "", "", err
-	}
-
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err != nil {
-		return "", "", err
-	}
-
-	imgSrc, exists := doc.Find("table td img").First().Attr("src")
-	if !exists {
-		return "", "", fmt.Errorf("Couldn't find location")
-	}
-
-	re := regexp.MustCompile(`([a-z]{2})\.gif`)
-	country := strings.ToUpper(re.FindStringSubmatch(imgSrc)[1])
-	city := doc.Find("table td:nth-child(4)").First().Text()
-	return city, country, nil
-}
-
-func searchYr(city, country string) (string, error) {
-	doc, err := getDocument("https://www.yr.no/soek/soek.aspx?spr=eng&&sted=" + city + "&land=" + country)
-	if err != nil {
-		return "", err
-	}
-
-	href, exists := doc.Find("table.yr-table td a").Attr("href")
-	if !exists {
-		return "", fmt.Errorf("Couldn't find place in YR.")
-	}
-	return "https://www.yr.no" + href, nil
+type Location struct {
+	CountryCode string `json:"countryCode"`
+	City        string `json:"city"`
 }
