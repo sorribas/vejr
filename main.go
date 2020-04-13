@@ -66,22 +66,22 @@ func weatherReportFromDocument(doc *goquery.Document) []WeatherDay {
 	return result
 }
 
-func getDocument(url string) (*goquery.Document, error) {
+func getDocument(url string) (*goquery.Document, bool, error) {
 	res, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer res.Body.Close()
-	fmt.Println("status", url, res.StatusCode)
 	if res.StatusCode != 200 {
-		return nil, errors.New("failed to fetch")
+		return nil, false, errors.New("failed to fetch")
 	}
 
-	return goquery.NewDocumentFromReader(res.Body)
+	r, err := goquery.NewDocumentFromReader(res.Body)
+	return r, res.Request.URL.String() != url, err
 }
 
 func getWeatherReport(city, country string) ([]WeatherDay, error) {
-	doc, err := getDocument("https://www.yr.no/soek/soek.aspx?spr=eng&&sted=" + city + "&land=" + country)
+	doc, redirected, err := getDocument("https://www.yr.no/soek/soek.aspx?spr=eng&sted=" + replaceSpaces(city) + "&land=" + country)
 	if err != nil {
 		return nil, err
 	}
@@ -89,18 +89,31 @@ func getWeatherReport(city, country string) ([]WeatherDay, error) {
 	href, exists := doc.Find("table.yr-table td a").Attr("href")
 	if !exists {
 		// assume that we got redirected to the weather page of the city
-		return weatherReportFromDocument(doc), nil
+		if redirected {
+			return weatherReportFromDocument(doc), nil
+		}
+
+		return getWeatherReport(removeLastWord(city), country)
 	}
 
 	// otherwise follow the first link on the search results page
-	doc, err = getDocument("https://www.yr.no" + href)
+	doc, _, err = getDocument("https://www.yr.no" + href)
 	if err != nil {
 		return nil, err
 	}
 	return weatherReportFromDocument(doc), nil
 }
 
+func replaceSpaces(str string) string {
+	return strings.Replace(str, " ", "%20", -1)
+}
+
+func removeLastWord(str string) string {
+	return str[:strings.LastIndex(str, " ")]
+}
+
 func getLocation() (Location, error) {
+	return Location{"DK", "Kobenhavn SV"}, nil
 	res, err := http.Get("http://ip-api.com/json/")
 	if err != nil {
 		return Location{}, err
