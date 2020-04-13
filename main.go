@@ -67,7 +67,16 @@ func weatherReportFromDocument(doc *goquery.Document) []WeatherDay {
 }
 
 func getDocument(url string) (*goquery.Document, bool, error) {
-	res, err := http.Get(url)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	req.AddCookie(&http.Cookie{
+		Name:  "brp",
+		Value: "spr=eng",
+	})
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, false, err
 	}
