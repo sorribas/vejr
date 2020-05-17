@@ -14,10 +14,16 @@ import (
 )
 
 func main() {
-	loc, err := getLocation()
-	if err != nil {
-		fmt.Println("Couldn't determine your location. Please provide the city where you are on the command line.", err)
-		return
+	var loc Location
+	if len(os.Args) == 1 {
+		var err error
+		loc, err = getLocation()
+		if err != nil {
+			fmt.Println("Couldn't determine your location. Please provide the city where you are on the command line.", err)
+			return
+		}
+	} else {
+		loc = Location{City: os.Args[1]}
 	}
 
 	weather, err := getWeatherReport(loc.City, loc.CountryCode)
@@ -27,7 +33,9 @@ func main() {
 		return
 	}
 
-	for _, day := range weather {
+	fmt.Println("Weather forecast for", weather.Title)
+	fmt.Println()
+	for _, day := range weather.Days {
 		fmt.Println(day.Title)
 		table := tablewriter.NewWriter(os.Stdout)
 		table.SetHeader([]string{"Time", "Forecast", "Temp", "Precipitation", "Wind"})
@@ -43,8 +51,8 @@ func main() {
 	getLocation()
 }
 
-func weatherReportFromDocument(doc *goquery.Document) []WeatherDay {
-	result := []WeatherDay{}
+func weatherReportFromDocument(doc *goquery.Document) WeatherReport {
+	result := WeatherReport{}
 	doc.Find(".yr-table-overview2").Each(func(i int, table *goquery.Selection) {
 		day := WeatherDay{}
 		day.Title = strings.TrimSpace(table.Find("caption").Text())
@@ -60,9 +68,10 @@ func weatherReportFromDocument(doc *goquery.Document) []WeatherDay {
 			day.Periods = append(day.Periods, period)
 		})
 
-		result = append(result, day)
+		result.Days = append(result.Days, day)
 	})
 
+	result.Title = doc.Find("h1 span").Text()
 	return result
 }
 
@@ -89,10 +98,13 @@ func getDocument(url string) (*goquery.Document, bool, error) {
 	return r, res.Request.URL.String() != url, err
 }
 
-func getWeatherReport(city, country string) ([]WeatherDay, error) {
+func getWeatherReport(city, country string) (WeatherReport, error) {
+	if city == "" {
+		return WeatherReport{}, fmt.Errorf("Couldn't find city")
+	}
 	doc, redirected, err := getDocument("https://www.yr.no/soek/soek.aspx?spr=eng&sted=" + replaceSpaces(city) + "&land=" + country)
 	if err != nil {
-		return nil, err
+		return WeatherReport{}, err
 	}
 
 	href, exists := doc.Find("table.yr-table td a").Attr("href")
@@ -108,7 +120,7 @@ func getWeatherReport(city, country string) ([]WeatherDay, error) {
 	// otherwise follow the first link on the search results page
 	doc, _, err = getDocument("https://www.yr.no" + href)
 	if err != nil {
-		return nil, err
+		return WeatherReport{}, err
 	}
 	return weatherReportFromDocument(doc), nil
 }
@@ -118,11 +130,14 @@ func replaceSpaces(str string) string {
 }
 
 func removeLastWord(str string) string {
-	return str[:strings.LastIndex(str, " ")]
+	i := strings.LastIndex(str, " ")
+	if i == -1 {
+		return ""
+	}
+	return str[:i]
 }
 
 func getLocation() (Location, error) {
-	return Location{"DK", "Kobenhavn SV"}, nil
 	res, err := http.Get("http://ip-api.com/json/")
 	if err != nil {
 		return Location{}, err
@@ -133,8 +148,16 @@ func getLocation() (Location, error) {
 	}
 
 	var loc Location
-	json.Unmarshal(bytes, &loc)
+	err = json.Unmarshal(bytes, &loc)
+	if err != nil {
+		return Location{}, err
+	}
 	return loc, nil
+}
+
+type WeatherReport struct {
+	Title string
+	Days  []WeatherDay
 }
 
 type WeatherDay struct {
