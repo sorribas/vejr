@@ -3,6 +3,8 @@ name: Go
 on:
   push:
     branches: [ master ]
+    tags: 
+    - "*"
   pull_request:
     branches: [ master ]
 
@@ -32,7 +34,7 @@ jobs:
     - name: Build
       run: |
         go build -o vejr-linux -v .
-        GOOS=windows go build -o vejr-windows -v .
+        GOOS=windows go build -o vejr-windows.exe -v .
         GOOS=darwin go build -o vejr-darwin -v .
         
     - name: Create Release
