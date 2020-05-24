@@ -1,0 +1,27 @@
+---
+version: 1
+interactions:
+- request:
+    body: ""
+    form: {}
+    headers: {}
+    url: http://ip-api.com/json/
+    method: GET
+  response:
+    body: '{"status":"success","country":"Denmark","countryCode":"DK","region":"84","regionName":"Capital Region","city":"Kobenhavn SV","zip":"1128","lat":55.6786,"lon":12.5589,"timezone":"Europe/Copenhagen","isp":"TDC A/S","org":"TDC A/S","as":"AS3292 TDC A/S","query":"83.93.114.22"}'
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Content-Length:
+      - "274"
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Sun, 24 May 2020 12:59:23 GMT
+      X-Rl:
+      - "43"
+      X-Ttl:
+      - "33"
+    status: 200 OK
+    code: 200
+    duration: ""

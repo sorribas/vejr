@@ -3,36 +3,16 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/dnaeon/go-vcr/recorder"
 )
 
-var r *recorder.Recorder
-
-func init() {
-	var err error
-	r, err = recorder.New("fixtures/yr")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	http.DefaultClient.Transport = r
-}
-
-func shutdown() {
-	r.Stop()
-}
-
-func TestMain(m *testing.M) {
-	code := m.Run()
-	shutdown()
-	os.Exit(code)
-}
-
 func TestGetWeatherReport(t *testing.T) {
+	end := vcr("fixtures/get-weather-report")
+	defer end()
+
 	weather, err := getWeatherReport("Copenhagen", "DK")
 	if err != nil {
 		log.Fatal(err)
@@ -60,6 +40,9 @@ func TestGetWeatherReport(t *testing.T) {
 }
 
 func TestGetWeatherReportKBHSV(t *testing.T) {
+	end := vcr("fixtures/get-weather-report-kbh-sv")
+	defer end()
+
 	weather, err := getWeatherReport("Kobenhavn SV", "DK")
 	if err != nil {
 		log.Fatal(err)
@@ -71,6 +54,9 @@ func TestGetWeatherReportKBHSV(t *testing.T) {
 }
 
 func TestGetLocation(t *testing.T) {
+	end := vcr("fixtures/get-location")
+	defer end()
+
 	l, err := getLocation()
 	if err != nil {
 		log.Fatal(err)
@@ -78,5 +64,19 @@ func TestGetLocation(t *testing.T) {
 
 	if l.CountryCode != "DK" || l.City != "Kobenhavn SV" {
 		log.Fatal("Unexpected location", l.CountryCode, l.City)
+	}
+}
+
+func vcr(name string) func() {
+	recorder, err := recorder.New(name)
+	if err != nil {
+		panic(err)
+	}
+
+	oldTransport := http.DefaultClient.Transport
+	http.DefaultClient.Transport = recorder
+	return func() {
+		http.DefaultClient.Transport = oldTransport
+		recorder.Stop()
 	}
 }
